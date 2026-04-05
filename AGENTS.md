@@ -22,13 +22,17 @@ Ask the user which LLM provider they'd like to use. Recommend DeepSeek for cost-
 - OpenAI
 - Claude/Anthropic (needs an OpenAI-compatible proxy like OpenRouter)
 - Gemini (needs an OpenAI-compatible proxy like OpenRouter)
-- Groq
+- Grok/xAI
 - Kimi/Moonshot
 - GLM/Zhipu
+- ByteDance Seed
+- Minimax
 - Ollama (fully local, free, no API key)
 - Any other provider with an OpenAI-compatible API
 
-Tab Out uses the `openai` npm package, so it works with any API that follows the OpenAI chat completions format. You just need the provider's base URL and a model name that works for chat/classification tasks. Use your own knowledge of the provider's current API docs to fill in the correct `baseUrl` and `model` values — don't rely on hardcoded model names, as they change frequently.
+Tab Out uses the `openai` npm package, so it works with any API that follows the OpenAI chat completions format. You need to configure the provider's `baseUrl` and a `model` name suitable for chat/classification tasks.
+
+**IMPORTANT: Do NOT rely on your training data for base URLs or model names — they go stale.** Before configuring any provider, search the web for that provider's current API documentation to get the correct base URL and an appropriate model name. Model names and API endpoints change frequently.
 
 ### Step 3 — Ask for their API key
 

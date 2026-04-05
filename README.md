@@ -133,7 +133,7 @@ The config file lives at `~/.mission-control/config.json`:
 | `baseUrl` | `https://api.deepseek.com` | Your LLM provider's API endpoint |
 | `model` | `deepseek-chat` | Which model to use |
 
-Tab Out works with **any OpenAI-compatible API** — just set the `baseUrl` to your provider's endpoint and pick a cheap/fast model (this is classification, not creative writing). DeepSeek, OpenAI, Groq, Together, OpenRouter, Ollama, Kimi, GLM, and many others all work.
+Tab Out works with **any OpenAI-compatible API** — just set the `baseUrl` to your provider's endpoint and pick a cheap/fast model (this is classification, not creative writing). DeepSeek, OpenAI, Grok, Kimi, GLM, ByteDance Seed, Minimax, OpenRouter, Ollama, and many others all work.
 
 ### Custom Grouping Rules
 
