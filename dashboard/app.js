@@ -1458,10 +1458,32 @@ document.addEventListener('click', async (e) => {
     playCloseSound();
     await fetchOpenTabs();
 
-    // Remove the dupe button since they're cleaned up
+    // Remove the dupe button
     actionEl.style.transition = 'opacity 0.2s';
     actionEl.style.opacity = '0';
     setTimeout(() => actionEl.remove(), 200);
+
+    // Remove all (2x) badges and the "N duplicates" header badge from this card
+    if (card) {
+      card.querySelectorAll('.chip-dupe-badge').forEach(b => {
+        b.style.transition = 'opacity 0.2s';
+        b.style.opacity = '0';
+        setTimeout(() => b.remove(), 200);
+      });
+      // Remove the amber "N duplicates" badge from the card header
+      card.querySelectorAll('.open-tabs-badge').forEach(badge => {
+        if (badge.textContent.includes('duplicate')) {
+          badge.style.transition = 'opacity 0.2s';
+          badge.style.opacity = '0';
+          setTimeout(() => badge.remove(), 200);
+        }
+      });
+      // Remove amber highlight from the card border
+      card.classList.remove('has-amber-bar');
+      card.classList.add('has-neutral-bar');
+      const statusBar = card.querySelector('.status-bar');
+      if (statusBar) statusBar.style.background = '';
+    }
 
     showToast(`Closed duplicates, kept one copy each`);
     return;
