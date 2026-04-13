@@ -94,6 +94,19 @@ const ICONS = {
 };
 
 /* ----------------------------------------------------------------
+   HTML ESCAPING
+   ---------------------------------------------------------------- */
+
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/* ----------------------------------------------------------------
    CHROME API HELPERS
    ---------------------------------------------------------------- */
 
@@ -103,12 +116,13 @@ async function fetchOpenTabs() {
   const newtabUrl = `chrome-extension://${extensionId}/newtab.html`;
 
   openTabs = tabs.map(tab => ({
-    id:       tab.id,
-    url:      tab.url,
-    title:    tab.title,
-    windowId: tab.windowId,
-    active:   tab.active,
-    isTabOut: tab.url === newtabUrl || tab.url === 'chrome://newtab/',
+    id:         tab.id,
+    url:        tab.url,
+    title:      tab.title,
+    favIconUrl: tab.favIconUrl,
+    windowId:   tab.windowId,
+    active:     tab.active,
+    isTabOut:   tab.url === newtabUrl || tab.url === 'chrome://newtab/',
   }));
 }
 
@@ -222,6 +236,7 @@ async function saveDeferredItem(tab) {
     id: Date.now() + Math.random().toString(36).substr(2, 9),
     url: tab.url,
     title: tab.title,
+    favIconUrl: tab.favIconUrl || '',
     deferred_at: new Date().toISOString(),
     archived: false
   };
@@ -449,13 +464,12 @@ function buildOverflowChips(hiddenTabs, urlCounts = {}) {
   const hiddenChips = hiddenTabs.map(tab => {
     const label = cleanTitle(smartTitle(stripTitleNoise(tab.title || ''), tab.url), '');
     const count = urlCounts[tab.url] || 1;
-    const safeUrl = (tab.url || '').replace(/"/g, '&quot;');
-    const safeTitle = label.replace(/"/g, '&quot;');
-    let domain = ''; try { domain = new URL(tab.url).hostname; } catch {}
-    const faviconUrl = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=16` : '';
+    const safeUrl = escapeHtml(tab.url || '');
+    const safeTitle = escapeHtml(label);
+    const faviconUrl = tab.favIconUrl || '';
     return `<div class="page-chip clickable${count > 1 ? ' chip-has-dupes' : ''}" data-action="focus-tab" data-tab-url="${safeUrl}" title="${safeTitle}">
-      ${faviconUrl ? `<img class="chip-favicon" src="${faviconUrl}" alt="" onerror="this.style.display='none'">` : ''}
-      <span class="chip-text">${label}</span>${count > 1 ? ` <span class="chip-dupe-badge">(${count}x)</span>` : ''}
+      ${faviconUrl ? `<img class="chip-favicon" src="${escapeHtml(faviconUrl)}" alt="">` : ''}
+      <span class="chip-text">${safeTitle}</span>${count > 1 ? ` <span class="chip-dupe-badge">(${count}x)</span>` : ''}
       <div class="chip-actions">
         <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="Save for later">${ICONS.archive}</button>
         <button class="chip-action chip-close" data-action="close-single-tab" data-tab-url="${safeUrl}" title="Close this tab">${ICONS.close}</button>
@@ -481,13 +495,12 @@ function renderDomainCard(group) {
     let label = cleanTitle(smartTitle(stripTitleNoise(tab.title || ''), tab.url), group.domain);
     try { const u = new URL(tab.url); if (u.hostname === 'localhost' && u.port) label = `${u.port} ${label}`; } catch {}
     const count = urlCounts[tab.url];
-    const safeUrl = (tab.url || '').replace(/"/g, '&quot;');
-    const safeTitle = label.replace(/"/g, '&quot;');
-    let domain = ''; try { domain = new URL(tab.url).hostname; } catch {}
-    const faviconUrl = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=16` : '';
+    const safeUrl = escapeHtml(tab.url || '');
+    const safeTitle = escapeHtml(label);
+    const faviconUrl = tab.favIconUrl || '';
     return `<div class="page-chip clickable${count > 1 ? ' chip-has-dupes' : ''}" data-action="focus-tab" data-tab-url="${safeUrl}" title="${safeTitle}">
-      ${faviconUrl ? `<img class="chip-favicon" src="${faviconUrl}" alt="" onerror="this.style.display='none'">` : ''}
-      <span class="chip-text">${label}</span>${count > 1 ? ` <span class="chip-dupe-badge">(${count}x)</span>` : ''}
+      ${faviconUrl ? `<img class="chip-favicon" src="${escapeHtml(faviconUrl)}" alt="">` : ''}
+      <span class="chip-text">${safeTitle}</span>${count > 1 ? ` <span class="chip-dupe-badge">(${count}x)</span>` : ''}
       <div class="chip-actions">
         <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="Save for later">${ICONS.archive}</button>
         <button class="chip-action chip-close" data-action="close-single-tab" data-tab-url="${safeUrl}" title="Close this tab">${ICONS.close}</button>
@@ -529,13 +542,19 @@ async function renderDeferredColumn() {
     countEl.textContent = `${active.length} item${active.length !== 1 ? 's' : ''}`;
     list.innerHTML = active.map(item => {
       let d = ''; try { d = new URL(item.url).hostname.replace(/^www\./, ''); } catch {}
+      const safeUrl = escapeHtml(item.url || '');
+      const safeTitle = escapeHtml(item.title || item.url || '');
+      const safeDomain = escapeHtml(d);
+      const faviconHtml = item.favIconUrl
+        ? `<img src="${escapeHtml(item.favIconUrl)}" alt="" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px">`
+        : '';
       return `<div class="deferred-item" data-deferred-id="${item.id}">
         <input type="checkbox" class="deferred-checkbox" data-action="check-deferred" data-deferred-id="${item.id}">
         <div class="deferred-info">
-          <a href="${item.url}" target="_blank" rel="noopener" class="deferred-title" title="${(item.title || '').replace(/"/g, '&quot;')}">
-            <img src="https://www.google.com/s2/favicons?domain=${d}&sz=16" alt="" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px" onerror="this.style.display='none'">${item.title || item.url}
+          <a href="${safeUrl}" target="_blank" rel="noopener" class="deferred-title" title="${safeTitle}">
+            ${faviconHtml}${safeTitle}
           </a>
-          <div class="deferred-meta"><span>${d}</span><span>${timeAgo(item.deferred_at)}</span></div>
+          <div class="deferred-meta"><span>${safeDomain}</span><span>${timeAgo(item.deferred_at)}</span></div>
         </div>
         <button class="deferred-dismiss" data-action="dismiss-deferred" data-deferred-id="${item.id}" title="Dismiss">${ICONS.close}</button>
       </div>`;
@@ -544,7 +563,7 @@ async function renderDeferredColumn() {
   } else { list.style.display = 'none'; countEl.textContent = ''; empty.style.display = 'block'; }
   if (archived.length > 0) {
     archiveCountEl.textContent = `(${archived.length})`;
-    archiveList.innerHTML = archived.map(item => `<div class="archive-item"><a href="${item.url}" target="_blank" rel="noopener" class="archive-item-title" title="${(item.title || '').replace(/"/g, '&quot;')}">${item.title || item.url}</a><span class="archive-item-date">${timeAgo(item.archived_at)}</span></div>`).join('');
+    archiveList.innerHTML = archived.map(item => `<div class="archive-item"><a href="${escapeHtml(item.url || '')}" target="_blank" rel="noopener" class="archive-item-title" title="${escapeHtml(item.title || '')}">${escapeHtml(item.title || item.url || '')}</a><span class="archive-item-date">${timeAgo(item.archived_at)}</span></div>`).join('');
     archiveEl.style.display = 'block';
   } else archiveEl.style.display = 'none';
 }
@@ -689,7 +708,8 @@ document.addEventListener('click', async (e) => {
   if (action === 'defer-single-tab') {
     e.stopPropagation();
     const url = actionEl.dataset.tabUrl, title = actionEl.dataset.tabTitle || url;
-    await saveDeferredItem({ url, title });
+    const matchedTab = openTabs.find(t => t.url === url);
+    await saveDeferredItem({ url, title, favIconUrl: matchedTab ? matchedTab.favIconUrl : '' });
     await closeTabsByUrls([url], true);
     await fetchOpenTabs();
     const chip = actionEl.closest('.page-chip');
@@ -808,13 +828,21 @@ document.addEventListener('input', async (e) => {
   const items = await getDeferredItems();
   const archived = items.filter(i => i.archived);
   const filtered = q.length < 2 ? archived : archived.filter(i => i.title.toLowerCase().includes(q) || i.url.toLowerCase().includes(q));
-  list.innerHTML = filtered.map(item => `<div class="archive-item"><a href="${item.url}" target="_blank" rel="noopener" class="archive-item-title" title="${(item.title || '').replace(/"/g, '&quot;')}">${item.title || item.url}</a><span class="archive-item-date">${timeAgo(item.archived_at)}</span></div>`).join('') || '<div style="font-size:12px;color:var(--muted);padding:8px 0">No results</div>';
+  list.innerHTML = filtered.map(item => `<div class="archive-item"><a href="${escapeHtml(item.url || '')}" target="_blank" rel="noopener" class="archive-item-title" title="${escapeHtml(item.title || '')}">${escapeHtml(item.title || item.url || '')}</a><span class="archive-item-date">${timeAgo(item.archived_at)}</span></div>`).join('') || '<div style="font-size:12px;color:var(--muted);padding:8px 0">No results</div>';
 });
 
 // Auto-refresh when tabs change
 chrome.tabs.onCreated.addListener(renderDashboard);
 chrome.tabs.onRemoved.addListener(renderDashboard);
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => { if (changeInfo.status === 'complete') renderDashboard(); });
+
+// Hide broken favicon images (capture phase needed for img error events).
+// Uses a global listener instead of inline onerror to comply with CSP.
+document.addEventListener('error', (e) => {
+  if (e.target.tagName === 'IMG' && (e.target.classList.contains('chip-favicon') || e.target.closest('.deferred-info'))) {
+    e.target.style.display = 'none';
+  }
+}, true);
 
 // Initialize
 renderDashboard();
