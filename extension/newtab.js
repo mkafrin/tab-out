@@ -310,6 +310,36 @@ function showToast(message) {
   setTimeout(() => toast.classList.remove('visible'), 2500);
 }
 
+/**
+ * showConfirmModal
+ * Shows a beautiful confirmation modal and calls onConfirm if the user clicks "Close tabs".
+ */
+function showConfirmModal(title, description, onConfirm) {
+  const modal = document.getElementById('confirmModal');
+  const titleEl = document.getElementById('modalTitle');
+  const descEl = document.getElementById('modalDescription');
+  const cancelBtn = document.getElementById('modalCancel');
+  const confirmBtn = document.getElementById('modalConfirm');
+
+  titleEl.textContent = title;
+  descEl.textContent = description;
+
+  const hide = () => modal.classList.remove('visible');
+
+  cancelBtn.onclick = hide;
+  confirmBtn.onclick = () => {
+    hide();
+    onConfirm();
+  };
+
+  modal.classList.add('visible');
+
+  // Close modal on click outside card
+  modal.onclick = (e) => {
+    if (e.target === modal) hide();
+  };
+}
+
 function getGreeting() {
   const hour = new Date().getHours();
   if (hour < 12) return 'Good morning';
@@ -661,14 +691,24 @@ document.addEventListener('click', async (e) => {
     const domainId = actionEl.dataset.domainId;
     const group = domainGroups.find(g => 'domain-' + g.domain.replace(/[^a-z0-9]/g, '-') === domainId);
     if (!group) return;
-    const urls = group.tabs.map(t => t.url);
-    await closeTabsByUrls(urls, group.domain === '__landing-pages__');
-    if (card) {
-      playCloseSound();
-      const r = card.getBoundingClientRect(); shootConfetti(r.left + r.width/2, r.top + r.height/2);
-      card.classList.add('closing'); setTimeout(() => { card.remove(); if (document.querySelectorAll('#openTabsMissions .mission-card').length === 0) renderDashboard(); }, 300);
-    }
-    showToast(`Closed tabs from ${group.domain === '__landing-pages__' ? 'Homepages' : friendlyDomain(group.domain)}`);
+
+    const count = group.tabs.length;
+    const name = group.domain === '__landing-pages__' ? 'Homepages' : friendlyDomain(group.domain);
+
+    showConfirmModal(
+      `Close ${count} tabs?`,
+      `You're about to close all tabs from ${name}. This cannot be undone.`,
+      async () => {
+        const urls = group.tabs.map(t => t.url);
+        await closeTabsByUrls(urls, group.domain === '__landing-pages__');
+        if (card) {
+          playCloseSound();
+          const r = card.getBoundingClientRect(); shootConfetti(r.left + r.width/2, r.top + r.height/2);
+          card.classList.add('closing'); setTimeout(() => { card.remove(); if (document.querySelectorAll('#openTabsMissions .mission-card').length === 0) renderDashboard(); }, 300);
+        }
+        showToast(`Closed tabs from ${name}`);
+      }
+    );
     return;
   }
 
@@ -685,15 +725,24 @@ document.addEventListener('click', async (e) => {
   }
 
   if (action === 'close-all-open-tabs') {
-    const allUrls = openTabs.filter(t => t.url && !t.url.startsWith('chrome') && !t.url.startsWith('about:')).map(t => t.url);
-    await closeTabsByUrls(allUrls);
-    playCloseSound();
-    document.querySelectorAll('#openTabsMissions .mission-card').forEach(c => {
-      const r = c.getBoundingClientRect(); shootConfetti(r.left + r.width/2, r.top + r.height/2);
-      c.classList.add('closing'); setTimeout(() => c.remove(), 300);
-    });
-    setTimeout(renderDashboard, 400);
-    showToast('All tabs closed. Fresh start.');
+    const realTabs = openTabs.filter(t => t.url && !t.url.startsWith('chrome') && !t.url.startsWith('about:') && !t.url.startsWith('edge:') && !t.url.startsWith('brave:'));
+    const count = realTabs.length;
+
+    showConfirmModal(
+      `Close ${count} tabs?`,
+      `This will close every open tab managed by Tab Out. Are you sure you want a completely fresh start?`,
+      async () => {
+        const allUrls = realTabs.map(t => t.url);
+        await closeTabsByUrls(allUrls);
+        playCloseSound();
+        document.querySelectorAll('#openTabsMissions .mission-card').forEach(c => {
+          const r = c.getBoundingClientRect(); shootConfetti(r.left + r.width/2, r.top + r.height/2);
+          c.classList.add('closing'); setTimeout(() => c.remove(), 300);
+        });
+        setTimeout(renderDashboard, 400);
+        showToast('All tabs closed. Fresh start.');
+      }
+    );
     return;
   }
 });

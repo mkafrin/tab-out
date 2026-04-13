@@ -1308,3 +1308,96 @@ footer {
   opacity: 0.6;
   flex-shrink: 0;
 }
+
+/* ================================================================
+   CONFIRMATION MODAL
+   ================================================================ */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 22, 19, 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.modal-overlay.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-card {
+  background: var(--card-bg);
+  border: 1px solid var(--warm-gray);
+  border-radius: 16px;
+  padding: 32px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+  transform: scale(0.95) translateY(10px);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  text-align: center;
+}
+
+.modal-overlay.visible .modal-card {
+  transform: scale(1) translateY(0);
+}
+
+.modal-card h3 {
+  font-family: 'Newsreader', serif;
+  font-size: 24px;
+  font-weight: 400;
+  font-style: italic;
+  margin-bottom: 12px;
+  color: var(--ink);
+}
+
+.modal-card p {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.modal-btn {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 24px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.modal-btn.secondary {
+  background: var(--warm-gray);
+  color: var(--ink);
+}
+
+.modal-btn.secondary:hover {
+  background: #d8d2ca;
+}
+
+.modal-btn.danger {
+  background: var(--status-abandoned);
+  color: white;
+}
+
+.modal-btn.danger:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
