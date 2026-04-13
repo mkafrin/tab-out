@@ -484,6 +484,11 @@ function renderDomainCard(group) {
 async function renderDeferredColumn() {
   const column = document.getElementById('deferredColumn'), list = document.getElementById('deferredList'), empty = document.getElementById('deferredEmpty'), countEl = document.getElementById('deferredCount'), archiveEl = document.getElementById('deferredArchive'), archiveCountEl = document.getElementById('archiveCount'), archiveList = document.getElementById('archiveList');
   if (!column) return;
+
+  const { deferredMinimized } = await chrome.storage.local.get('deferredMinimized');
+  if (deferredMinimized) column.classList.add('minimized');
+  else column.classList.remove('minimized');
+
   const items = await getDeferredItems();
   const active = items.filter(i => !i.archived), archived = items.filter(i => i.archived);
   if (active.length === 0 && archived.length === 0) { column.style.display = 'none'; return; }
@@ -699,6 +704,15 @@ document.addEventListener('click', (e) => {
   toggle.classList.toggle('open');
   const body = document.getElementById('archiveBody');
   if (body) body.style.display = body.style.display === 'none' ? 'block' : 'none';
+});
+
+document.addEventListener('click', async (e) => {
+  const toggle = e.target.closest('#columnToggle');
+  if (!toggle) return;
+  const column = document.getElementById('deferredColumn');
+  if (!column) return;
+  const isMinimized = column.classList.toggle('minimized');
+  await chrome.storage.local.set({ deferredMinimized: isMinimized });
 });
 
 document.addEventListener('input', async (e) => {
