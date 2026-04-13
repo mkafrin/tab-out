@@ -1,7 +1,6 @@
 /* ============================================================
    Tab Mission Control — Dashboard Styles
-   Extracted directly from mockup.html — do not modify unless
-   also updating the mockup. This is the approved design.
+   Extracted directly from dashboard/style.css
    ============================================================ */
 
 :root {
@@ -356,7 +355,7 @@ header {
   padding: 8px 4px;
   border-radius: 0;
   border: none;
-  border-bottom: 1px solid rgba(154, 145, 138, 0.1);
+  border-bottom: 1px solid rgba(154, 145, 138, 0.12);
   position: relative;
   display: flex;
   align-items: center;
