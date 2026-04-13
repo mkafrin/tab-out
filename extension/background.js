@@ -5,6 +5,12 @@
  * extension's badge (showing the number of open tabs).
  */
 
+// Badge colors — service workers have no DOM, so CSS variables are unavailable.
+// These match the OKLCH accent values in newtab.css (converted back to hex).
+const BADGE_COLOR_CALM  = '#3d7a4a'; // < 20 tabs (sage/active green)
+const BADGE_COLOR_WARM  = '#c8713a'; // 20-39 tabs (amber)
+const BADGE_COLOR_HOT   = '#b35a5a'; // 40+ tabs (rose)
+
 /**
  * updateBadge — Counts all open tabs and updates the badge.
  * The badge color reflects the "heat" level (count of open tabs).
@@ -14,18 +20,13 @@ async function updateBadge() {
     const tabs = await chrome.tabs.query({});
     const count = tabs.length;
 
-    // Update badge text
     chrome.action.setBadgeText({ text: count.toString() });
 
-    // Update color based on count thresholds
-    // - Green (Calm):  < 20 tabs
-    // - Amber (Warm):  20-39 tabs
-    // - Red (Hot):     40+ tabs
-    let color = '#3d7a4a'; // Green
+    let color = BADGE_COLOR_CALM;
     if (count >= 20 && count < 40) {
-      color = '#c8713a'; // Amber
+      color = BADGE_COLOR_WARM;
     } else if (count >= 40) {
-      color = '#b35a5a'; // Red
+      color = BADGE_COLOR_HOT;
     }
 
     chrome.action.setBadgeBackgroundColor({ color });
