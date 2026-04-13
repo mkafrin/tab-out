@@ -14,6 +14,7 @@
 let openTabs = [];
 let domainGroups = [];
 let searchQuery = '';
+let isFirstRender = true;
 
 // Map of known domains → friendly display names.
 const FRIENDLY_DOMAINS = {
@@ -611,6 +612,23 @@ async function renderDashboard() {
     else banner.style.display = 'none';
   }
   await renderDeferredColumn();
+
+  // Manage animation state
+  const container = document.querySelector('.container');
+  if (container) {
+    if (searchQuery) {
+      container.classList.add('is-searching');
+    } else {
+      container.classList.remove('is-searching');
+    }
+    if (isFirstRender) {
+      // Delay adding ready class so entry animations can finish
+      setTimeout(() => {
+        container.classList.add('ready');
+      }, 1000);
+    }
+  }
+  isFirstRender = false;
 }
 
 /* ----------------------------------------------------------------
