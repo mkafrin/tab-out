@@ -846,18 +846,19 @@ document.addEventListener('click', async (e) => {
   if (action === 'close-single-tab') {
     e.stopPropagation();
     const url = actionEl.dataset.tabUrl;
+    const chip = actionEl.closest('.page-chip');
+    const chipRect = chip ? chip.getBoundingClientRect() : null;
+    const cardRect = card ? card.getBoundingClientRect() : null;
     await closeTabsByUrls([url], true);
     playCloseSound();
     await fetchOpenTabs();
-    const chip = actionEl.closest('.page-chip');
-    if (chip) {
-      const rect = chip.getBoundingClientRect();
-      shootConfetti(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    if (chip && chipRect) {
+      shootConfetti(chipRect.left + chipRect.width / 2, chipRect.top + chipRect.height / 2);
       chip.style.opacity = '0'; chip.style.transform = 'scale(0.8)';
       setTimeout(() => {
         chip.remove();
         if (card && card.querySelectorAll('.page-chip[data-action="focus-tab"]').length === 0) {
-          shootConfetti(card.offsetLeft + card.offsetWidth/2, card.offsetTop + card.offsetHeight/2);
+          if (cardRect) shootConfetti(cardRect.left + cardRect.width / 2, cardRect.top + cardRect.height / 2);
           card.classList.add('closing'); setTimeout(() => { card.remove(); if (document.querySelectorAll('#openTabsMissions .mission-card').length === 0) renderDashboard(); }, 300);
         }
       }, 200);
@@ -912,10 +913,11 @@ document.addEventListener('click', async (e) => {
       `You're about to close all tabs from ${name}. This cannot be undone.`,
       async () => {
         const urls = group.tabs.map(t => t.url);
+        const r = card ? card.getBoundingClientRect() : null;
         await closeTabsByUrls(urls, group.domain === '__landing-pages__');
-        if (card) {
+        if (card && r) {
           playCloseSound();
-          const r = card.getBoundingClientRect(); shootConfetti(r.left + r.width/2, r.top + r.height/2);
+          shootConfetti(r.left + r.width/2, r.top + r.height/2);
           card.classList.add('closing'); setTimeout(() => { card.remove(); if (document.querySelectorAll('#openTabsMissions .mission-card').length === 0) renderDashboard(); }, 300);
         }
         showToast(`Closed tabs from ${name}`);
@@ -945,11 +947,12 @@ document.addEventListener('click', async (e) => {
       `This will close every open tab managed by Tab Out. Are you sure you want a completely fresh start?`,
       async () => {
         const allUrls = realTabs.map(t => t.url);
+        const cardRects = [...document.querySelectorAll('#openTabsMissions .mission-card')].map(c => ({el: c, rect: c.getBoundingClientRect()}));
         await closeTabsByUrls(allUrls);
         playCloseSound();
-        document.querySelectorAll('#openTabsMissions .mission-card').forEach(c => {
-          const r = c.getBoundingClientRect(); shootConfetti(r.left + r.width/2, r.top + r.height/2);
-          c.classList.add('closing'); setTimeout(() => c.remove(), 300);
+        cardRects.forEach(({el, rect}) => {
+          shootConfetti(rect.left + rect.width/2, rect.top + rect.height/2);
+          el.classList.add('closing'); setTimeout(() => el.remove(), 300);
         });
         setTimeout(renderDashboard, 400);
         showToast('All tabs closed. Fresh start.');
