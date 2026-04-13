@@ -13,6 +13,7 @@
 
 let openTabs = [];
 let domainGroups = [];
+let searchQuery = '';
 
 // Map of known domains → friendly display names.
 const FRIENDLY_DOMAINS = {
@@ -551,7 +552,19 @@ async function renderDashboard() {
   document.getElementById('greeting').textContent = getGreeting();
   document.getElementById('dateDisplay').textContent = getDateDisplay();
   await fetchOpenTabs();
-  const realTabs = openTabs.filter(t => !t.url.startsWith('chrome') && !t.url.startsWith('about:') && !t.url.startsWith('edge:') && !t.url.startsWith('brave:'));
+  let realTabs = openTabs.filter(t => !t.url.startsWith('chrome') && !t.url.startsWith('about:') && !t.url.startsWith('edge:') && !t.url.startsWith('brave:'));
+
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    realTabs = realTabs.filter(tab => {
+      let hostname = '';
+      try { hostname = (new URL(tab.url).hostname || '').toLowerCase(); } catch {}
+      const friendly = friendlyDomain(hostname).toLowerCase();
+      const title = (tab.title || '').toLowerCase();
+      const url = (tab.url || '').toLowerCase();
+      return friendly.includes(q) || hostname.includes(q) || title.includes(q) || url.includes(q);
+    });
+  }
 
   const LANDING_PAGE_PATTERNS = [
     { hostname: 'mail.google.com', test: (p, h) => !h.includes('#inbox/') && !h.includes('#sent/') && !h.includes('#search/') },
@@ -765,6 +778,11 @@ document.addEventListener('click', async (e) => {
 });
 
 document.addEventListener('input', async (e) => {
+  if (e.target.id === 'tabSearch') {
+    searchQuery = e.target.value.trim();
+    renderDashboard();
+    return;
+  }
   if (e.target.id !== 'archiveSearch') return;
   const q = e.target.value.trim().toLowerCase();
   const list = document.getElementById('archiveList');
