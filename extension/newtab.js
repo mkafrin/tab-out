@@ -94,6 +94,170 @@ const ICONS = {
 };
 
 /* ----------------------------------------------------------------
+   HTML ESCAPING
+   ---------------------------------------------------------------- */
+
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/* ----------------------------------------------------------------
+   THEME CUSTOMIZATION
+   Converts user-chosen hex colors to OKLCH and applies them as
+   inline style overrides on :root. Persists to chrome.storage.local.
+   ---------------------------------------------------------------- */
+
+const COLOR_KEYS = ['paper', 'ink', 'amber', 'sage', 'rose'];
+
+/**
+ * Convert a #rrggbb hex string to OKLCH {L, C, H}.
+ * Pipeline: hex -> sRGB bytes -> linear RGB -> LMS -> Oklab -> OKLCH.
+ */
+function hexToOklch(hex) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+
+  const toLinear = (v) => {
+    v /= 255;
+    return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+  const lr = toLinear(r), lg = toLinear(g), lb = toLinear(b);
+
+  const l_ = Math.cbrt(0.4122214708 * lr + 0.5363325363 * lg + 0.0514459929 * lb);
+  const m_ = Math.cbrt(0.2119034982 * lr + 0.6806995451 * lg + 0.1073969566 * lb);
+  const s_ = Math.cbrt(0.0883024619 * lr + 0.2817188376 * lg + 0.6299787005 * lb);
+
+  const L = 0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_;
+  const a = 1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_;
+  const okb = 0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_;
+
+  const C = Math.sqrt(a * a + okb * okb);
+  let H = Math.atan2(okb, a) * (180 / Math.PI);
+  if (H < 0) H += 360;
+
+  return { L, C, H };
+}
+
+/**
+ * Set the three OKLCH channel properties for a base color on :root.
+ */
+function setColorChannels(prefix, oklch) {
+  const style = document.documentElement.style;
+  style.setProperty(`--base-${prefix}-L`, oklch.L.toFixed(4));
+  style.setProperty(`--base-${prefix}-C`, oklch.C.toFixed(4));
+  style.setProperty(`--base-${prefix}-H`, oklch.H.toFixed(1));
+}
+
+/**
+ * Remove the inline channel overrides for a base color.
+ */
+function clearColorChannels(prefix) {
+  const style = document.documentElement.style;
+  style.removeProperty(`--base-${prefix}-L`);
+  style.removeProperty(`--base-${prefix}-C`);
+  style.removeProperty(`--base-${prefix}-H`);
+}
+
+/**
+ * When background (paper) or text (ink) changes, derive dependent colors
+ * so borders, card surfaces, and secondary text stay legible.
+ */
+function applyDerivedColors(overrides) {
+  const style = document.documentElement.style;
+
+  if (overrides.paper) {
+    const paper = hexToOklch(overrides.paper);
+    const isDark = paper.L < 0.5;
+
+    // Card background: slightly offset from paper
+    setColorChannels('card-bg', {
+      L: isDark ? paper.L + 0.02 : Math.min(paper.L + 0.02, 0.995),
+      C: paper.C * 0.8,
+      H: paper.H,
+    });
+
+    // Warm-gray borders: visible against background
+    setColorChannels('warm-gray', {
+      L: isDark ? paper.L + 0.10 : paper.L - 0.06,
+      C: Math.min(paper.C, 0.015),
+      H: paper.H,
+    });
+
+    // Shadow and accent text adjustments for dark backgrounds
+    if (isDark) {
+      style.setProperty('--shadow', 'oklch(0 0 0 / 0.25)');
+      style.setProperty('--overlay-shadow-deep', 'oklch(0 0 0 / 0.5)');
+      style.setProperty('--overlay-shadow-card', 'oklch(0 0 0 / 0.3)');
+      style.setProperty('--on-accent', 'oklch(0.15 0 0)');
+    } else {
+      style.removeProperty('--shadow');
+      style.removeProperty('--overlay-shadow-deep');
+      style.removeProperty('--overlay-shadow-card');
+      style.removeProperty('--on-accent');
+    }
+  }
+
+  if (overrides.paper && overrides.ink) {
+    // Muted text: midpoint between ink and paper lightness
+    const paper = hexToOklch(overrides.paper);
+    const ink = hexToOklch(overrides.ink);
+    setColorChannels('muted', {
+      L: (paper.L + ink.L) / 2,
+      C: 0.015,
+      H: (paper.H + ink.H) / 2,
+    });
+  } else if (overrides.paper) {
+    const paper = hexToOklch(overrides.paper);
+    setColorChannels('muted', {
+      L: paper.L < 0.5 ? 0.60 : 0.65,
+      C: 0.015,
+      H: paper.H,
+    });
+  }
+}
+
+/**
+ * Remove all derived color overrides.
+ */
+function clearDerivedColors() {
+  const style = document.documentElement.style;
+  ['card-bg', 'warm-gray', 'muted'].forEach(k => clearColorChannels(k));
+  ['--shadow', '--overlay-shadow-deep', '--overlay-shadow-card', '--on-accent']
+    .forEach(p => style.removeProperty(p));
+}
+
+/**
+ * Apply a full set of theme overrides from a {key: "#hex"} object.
+ */
+function applyThemeOverrides(overrides) {
+  for (const key of COLOR_KEYS) {
+    if (overrides[key]) {
+      setColorChannels(key, hexToOklch(overrides[key]));
+    }
+  }
+  applyDerivedColors(overrides);
+}
+
+/**
+ * Load saved theme from storage and apply on page load.
+ */
+async function loadSavedTheme() {
+  const data = await chrome.storage.local.get('themeOverrides');
+  if (data.themeOverrides && Object.keys(data.themeOverrides).length > 0) {
+    applyThemeOverrides(data.themeOverrides);
+  }
+}
+
+// Apply saved theme immediately
+loadSavedTheme();
+
+/* ----------------------------------------------------------------
    CHROME API HELPERS
    ---------------------------------------------------------------- */
 
@@ -103,12 +267,13 @@ async function fetchOpenTabs() {
   const newtabUrl = `chrome-extension://${extensionId}/newtab.html`;
 
   openTabs = tabs.map(tab => ({
-    id:       tab.id,
-    url:      tab.url,
-    title:    tab.title,
-    windowId: tab.windowId,
-    active:   tab.active,
-    isTabOut: tab.url === newtabUrl || tab.url === 'chrome://newtab/',
+    id:         tab.id,
+    url:        tab.url,
+    title:      tab.title,
+    favIconUrl: tab.favIconUrl,
+    windowId:   tab.windowId,
+    active:     tab.active,
+    isTabOut:   tab.url === newtabUrl || tab.url === 'chrome://newtab/',
   }));
 }
 
@@ -222,6 +387,7 @@ async function saveDeferredItem(tab) {
     id: Date.now() + Math.random().toString(36).substr(2, 9),
     url: tab.url,
     title: tab.title,
+    favIconUrl: tab.favIconUrl || '',
     deferred_at: new Date().toISOString(),
     archived: false
   };
@@ -273,7 +439,17 @@ function playCloseSound() {
 }
 
 function shootConfetti(x, y) {
-  const colors = ['#c8713a', '#e8a070', '#5a7a62', '#8aaa92', '#5a6b7a', '#8a9baa', '#d4b896', '#b35a5a'];
+  const cs = getComputedStyle(document.documentElement);
+  const colors = [
+    cs.getPropertyValue('--accent-amber').trim(),
+    cs.getPropertyValue('--confetti-amber-light').trim(),
+    cs.getPropertyValue('--accent-sage').trim(),
+    cs.getPropertyValue('--confetti-sage-light').trim(),
+    cs.getPropertyValue('--accent-slate').trim(),
+    cs.getPropertyValue('--confetti-slate-light').trim(),
+    cs.getPropertyValue('--confetti-warm-tan').trim(),
+    cs.getPropertyValue('--accent-rose').trim(),
+  ];
   const particleCount = 17;
   for (let i = 0; i < particleCount; i++) {
     const el = document.createElement('div');
@@ -449,13 +625,12 @@ function buildOverflowChips(hiddenTabs, urlCounts = {}) {
   const hiddenChips = hiddenTabs.map(tab => {
     const label = cleanTitle(smartTitle(stripTitleNoise(tab.title || ''), tab.url), '');
     const count = urlCounts[tab.url] || 1;
-    const safeUrl = (tab.url || '').replace(/"/g, '&quot;');
-    const safeTitle = label.replace(/"/g, '&quot;');
-    let domain = ''; try { domain = new URL(tab.url).hostname; } catch {}
-    const faviconUrl = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=16` : '';
+    const safeUrl = escapeHtml(tab.url || '');
+    const safeTitle = escapeHtml(label);
+    const faviconUrl = tab.favIconUrl || '';
     return `<div class="page-chip clickable${count > 1 ? ' chip-has-dupes' : ''}" data-action="focus-tab" data-tab-url="${safeUrl}" title="${safeTitle}">
-      ${faviconUrl ? `<img class="chip-favicon" src="${faviconUrl}" alt="" onerror="this.style.display='none'">` : ''}
-      <span class="chip-text">${label}</span>${count > 1 ? ` <span class="chip-dupe-badge">(${count}x)</span>` : ''}
+      ${faviconUrl ? `<img class="chip-favicon" src="${escapeHtml(faviconUrl)}" alt="">` : ''}
+      <span class="chip-text">${safeTitle}</span>${count > 1 ? ` <span class="chip-dupe-badge">(${count}x)</span>` : ''}
       <div class="chip-actions">
         <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="Save for later">${ICONS.archive}</button>
         <button class="chip-action chip-close" data-action="close-single-tab" data-tab-url="${safeUrl}" title="Close this tab">${ICONS.close}</button>
@@ -481,13 +656,12 @@ function renderDomainCard(group) {
     let label = cleanTitle(smartTitle(stripTitleNoise(tab.title || ''), tab.url), group.domain);
     try { const u = new URL(tab.url); if (u.hostname === 'localhost' && u.port) label = `${u.port} ${label}`; } catch {}
     const count = urlCounts[tab.url];
-    const safeUrl = (tab.url || '').replace(/"/g, '&quot;');
-    const safeTitle = label.replace(/"/g, '&quot;');
-    let domain = ''; try { domain = new URL(tab.url).hostname; } catch {}
-    const faviconUrl = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=16` : '';
+    const safeUrl = escapeHtml(tab.url || '');
+    const safeTitle = escapeHtml(label);
+    const faviconUrl = tab.favIconUrl || '';
     return `<div class="page-chip clickable${count > 1 ? ' chip-has-dupes' : ''}" data-action="focus-tab" data-tab-url="${safeUrl}" title="${safeTitle}">
-      ${faviconUrl ? `<img class="chip-favicon" src="${faviconUrl}" alt="" onerror="this.style.display='none'">` : ''}
-      <span class="chip-text">${label}</span>${count > 1 ? ` <span class="chip-dupe-badge">(${count}x)</span>` : ''}
+      ${faviconUrl ? `<img class="chip-favicon" src="${escapeHtml(faviconUrl)}" alt="">` : ''}
+      <span class="chip-text">${safeTitle}</span>${count > 1 ? ` <span class="chip-dupe-badge">(${count}x)</span>` : ''}
       <div class="chip-actions">
         <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="Save for later">${ICONS.archive}</button>
         <button class="chip-action chip-close" data-action="close-single-tab" data-tab-url="${safeUrl}" title="Close this tab">${ICONS.close}</button>
@@ -502,7 +676,7 @@ function renderDomainCard(group) {
         <div class="mission-top">
           <span class="mission-name">${isLanding ? 'Homepages' : friendlyDomain(group.domain)}</span>
           <span class="open-tabs-badge">${ICONS.tabs} ${tabCount} tab${tabCount !== 1 ? 's' : ''} open</span>
-          ${dupeUrls.length > 0 ? `<span class="open-tabs-badge" style="color:var(--accent-amber); background:rgba(200, 113, 58, 0.08);">${totalExtras} duplicate${totalExtras !== 1 ? 's' : ''}</span>` : ''}
+          ${dupeUrls.length > 0 ? `<span class="open-tabs-badge" style="color:var(--accent-amber); background:var(--amber-tint-light);">${totalExtras} duplicate${totalExtras !== 1 ? 's' : ''}</span>` : ''}
         </div>
         <div class="mission-pages">${pageChips}</div>
         <div class="actions">
@@ -529,13 +703,19 @@ async function renderDeferredColumn() {
     countEl.textContent = `${active.length} item${active.length !== 1 ? 's' : ''}`;
     list.innerHTML = active.map(item => {
       let d = ''; try { d = new URL(item.url).hostname.replace(/^www\./, ''); } catch {}
+      const safeUrl = escapeHtml(item.url || '');
+      const safeTitle = escapeHtml(item.title || item.url || '');
+      const safeDomain = escapeHtml(d);
+      const faviconHtml = item.favIconUrl
+        ? `<img src="${escapeHtml(item.favIconUrl)}" alt="" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px">`
+        : '';
       return `<div class="deferred-item" data-deferred-id="${item.id}">
         <input type="checkbox" class="deferred-checkbox" data-action="check-deferred" data-deferred-id="${item.id}">
         <div class="deferred-info">
-          <a href="${item.url}" target="_blank" rel="noopener" class="deferred-title" title="${(item.title || '').replace(/"/g, '&quot;')}">
-            <img src="https://www.google.com/s2/favicons?domain=${d}&sz=16" alt="" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px" onerror="this.style.display='none'">${item.title || item.url}
+          <a href="${safeUrl}" target="_blank" rel="noopener" class="deferred-title" title="${safeTitle}">
+            ${faviconHtml}${safeTitle}
           </a>
-          <div class="deferred-meta"><span>${d}</span><span>${timeAgo(item.deferred_at)}</span></div>
+          <div class="deferred-meta"><span>${safeDomain}</span><span>${timeAgo(item.deferred_at)}</span></div>
         </div>
         <button class="deferred-dismiss" data-action="dismiss-deferred" data-deferred-id="${item.id}" title="Dismiss">${ICONS.close}</button>
       </div>`;
@@ -544,7 +724,7 @@ async function renderDeferredColumn() {
   } else { list.style.display = 'none'; countEl.textContent = ''; empty.style.display = 'block'; }
   if (archived.length > 0) {
     archiveCountEl.textContent = `(${archived.length})`;
-    archiveList.innerHTML = archived.map(item => `<div class="archive-item"><a href="${item.url}" target="_blank" rel="noopener" class="archive-item-title" title="${(item.title || '').replace(/"/g, '&quot;')}">${item.title || item.url}</a><span class="archive-item-date">${timeAgo(item.archived_at)}</span></div>`).join('');
+    archiveList.innerHTML = archived.map(item => `<div class="archive-item"><a href="${escapeHtml(item.url || '')}" target="_blank" rel="noopener" class="archive-item-title" title="${escapeHtml(item.title || '')}">${escapeHtml(item.title || item.url || '')}</a><span class="archive-item-date">${timeAgo(item.archived_at)}</span></div>`).join('');
     archiveEl.style.display = 'block';
   } else archiveEl.style.display = 'none';
 }
@@ -666,18 +846,19 @@ document.addEventListener('click', async (e) => {
   if (action === 'close-single-tab') {
     e.stopPropagation();
     const url = actionEl.dataset.tabUrl;
+    const chip = actionEl.closest('.page-chip');
+    const chipRect = chip ? chip.getBoundingClientRect() : null;
+    const cardRect = card ? card.getBoundingClientRect() : null;
     await closeTabsByUrls([url], true);
     playCloseSound();
     await fetchOpenTabs();
-    const chip = actionEl.closest('.page-chip');
-    if (chip) {
-      const rect = chip.getBoundingClientRect();
-      shootConfetti(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    if (chip && chipRect) {
+      shootConfetti(chipRect.left + chipRect.width / 2, chipRect.top + chipRect.height / 2);
       chip.style.opacity = '0'; chip.style.transform = 'scale(0.8)';
       setTimeout(() => {
         chip.remove();
         if (card && card.querySelectorAll('.page-chip[data-action="focus-tab"]').length === 0) {
-          shootConfetti(card.offsetLeft + card.offsetWidth/2, card.offsetTop + card.offsetHeight/2);
+          if (cardRect) shootConfetti(cardRect.left + cardRect.width / 2, cardRect.top + cardRect.height / 2);
           card.classList.add('closing'); setTimeout(() => { card.remove(); if (document.querySelectorAll('#openTabsMissions .mission-card').length === 0) renderDashboard(); }, 300);
         }
       }, 200);
@@ -689,7 +870,8 @@ document.addEventListener('click', async (e) => {
   if (action === 'defer-single-tab') {
     e.stopPropagation();
     const url = actionEl.dataset.tabUrl, title = actionEl.dataset.tabTitle || url;
-    await saveDeferredItem({ url, title });
+    const matchedTab = openTabs.find(t => t.url === url);
+    await saveDeferredItem({ url, title, favIconUrl: matchedTab ? matchedTab.favIconUrl : '' });
     await closeTabsByUrls([url], true);
     await fetchOpenTabs();
     const chip = actionEl.closest('.page-chip');
@@ -731,10 +913,11 @@ document.addEventListener('click', async (e) => {
       `You're about to close all tabs from ${name}. This cannot be undone.`,
       async () => {
         const urls = group.tabs.map(t => t.url);
+        const r = card ? card.getBoundingClientRect() : null;
         await closeTabsByUrls(urls, group.domain === '__landing-pages__');
-        if (card) {
+        if (card && r) {
           playCloseSound();
-          const r = card.getBoundingClientRect(); shootConfetti(r.left + r.width/2, r.top + r.height/2);
+          shootConfetti(r.left + r.width/2, r.top + r.height/2);
           card.classList.add('closing'); setTimeout(() => { card.remove(); if (document.querySelectorAll('#openTabsMissions .mission-card').length === 0) renderDashboard(); }, 300);
         }
         showToast(`Closed tabs from ${name}`);
@@ -764,11 +947,12 @@ document.addEventListener('click', async (e) => {
       `This will close every open tab managed by Tab Out. Are you sure you want a completely fresh start?`,
       async () => {
         const allUrls = realTabs.map(t => t.url);
+        const cardRects = [...document.querySelectorAll('#openTabsMissions .mission-card')].map(c => ({el: c, rect: c.getBoundingClientRect()}));
         await closeTabsByUrls(allUrls);
         playCloseSound();
-        document.querySelectorAll('#openTabsMissions .mission-card').forEach(c => {
-          const r = c.getBoundingClientRect(); shootConfetti(r.left + r.width/2, r.top + r.height/2);
-          c.classList.add('closing'); setTimeout(() => c.remove(), 300);
+        cardRects.forEach(({el, rect}) => {
+          shootConfetti(rect.left + rect.width/2, rect.top + rect.height/2);
+          el.classList.add('closing'); setTimeout(() => el.remove(), 300);
         });
         setTimeout(renderDashboard, 400);
         showToast('All tabs closed. Fresh start.');
@@ -808,13 +992,146 @@ document.addEventListener('input', async (e) => {
   const items = await getDeferredItems();
   const archived = items.filter(i => i.archived);
   const filtered = q.length < 2 ? archived : archived.filter(i => i.title.toLowerCase().includes(q) || i.url.toLowerCase().includes(q));
-  list.innerHTML = filtered.map(item => `<div class="archive-item"><a href="${item.url}" target="_blank" rel="noopener" class="archive-item-title" title="${(item.title || '').replace(/"/g, '&quot;')}">${item.title || item.url}</a><span class="archive-item-date">${timeAgo(item.archived_at)}</span></div>`).join('') || '<div style="font-size:12px;color:var(--muted);padding:8px 0">No results</div>';
+  list.innerHTML = filtered.map(item => `<div class="archive-item"><a href="${escapeHtml(item.url || '')}" target="_blank" rel="noopener" class="archive-item-title" title="${escapeHtml(item.title || '')}">${escapeHtml(item.title || item.url || '')}</a><span class="archive-item-date">${timeAgo(item.archived_at)}</span></div>`).join('') || '<div style="font-size:12px;color:var(--muted);padding:8px 0">No results</div>';
 });
 
 // Auto-refresh when tabs change
 chrome.tabs.onCreated.addListener(renderDashboard);
 chrome.tabs.onRemoved.addListener(renderDashboard);
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => { if (changeInfo.status === 'complete') renderDashboard(); });
+
+// Hide broken favicon images (capture phase needed for img error events).
+// Uses a global listener instead of inline onerror to comply with CSP.
+document.addEventListener('error', (e) => {
+  if (e.target.tagName === 'IMG' && (e.target.classList.contains('chip-favicon') || e.target.closest('.deferred-info'))) {
+    e.target.style.display = 'none';
+  }
+}, true);
+
+/* ----------------------------------------------------------------
+   COLOR PICKER PANEL
+   ---------------------------------------------------------------- */
+
+const colorPanel = document.getElementById('colorPanelModal');
+const colorSwatches = colorPanel.querySelectorAll('.color-swatch');
+const colorHexInputs = colorPanel.querySelectorAll('.color-hex');
+
+// Current working overrides while the panel is open
+let workingOverrides = {};
+
+function isValidHex(str) {
+  return /^#[0-9a-fA-F]{6}$/.test(str);
+}
+
+/**
+ * Read the CSS-computed current value of a base color as a hex string.
+ * Falls back to the placeholder if computed style isn't readable.
+ */
+function getCurrentHex(key) {
+  const swatch = colorPanel.querySelector(`.color-swatch[data-color-key="${key}"]`);
+  return swatch ? swatch.placeholder || swatch.defaultValue : '#000000';
+}
+
+/**
+ * Populate the panel inputs from storage or current defaults.
+ */
+async function populateColorPanel() {
+  const data = await chrome.storage.local.get('themeOverrides');
+  const saved = data.themeOverrides || {};
+  workingOverrides = { ...saved };
+
+  colorSwatches.forEach(swatch => {
+    const key = swatch.dataset.colorKey;
+    const hexInput = colorPanel.querySelector(`.color-hex[data-color-key="${key}"]`);
+    const value = saved[key] || hexInput.placeholder;
+    swatch.value = value;
+    hexInput.value = saved[key] || '';
+  });
+}
+
+/**
+ * Apply a single color change from the panel with live preview.
+ */
+function previewColor(key, hex) {
+  if (!isValidHex(hex)) return;
+  workingOverrides[key] = hex;
+
+  setColorChannels(key, hexToOklch(hex));
+  applyDerivedColors(workingOverrides);
+}
+
+// Open panel
+document.getElementById('openColorPanel').addEventListener('click', async () => {
+  await populateColorPanel();
+  colorPanel.classList.add('visible');
+});
+
+// Close panel (backdrop click or Done button) -- persist
+function closeColorPanel() {
+  colorPanel.classList.remove('visible');
+
+  // Clean out keys that match defaults (empty hex field = use default)
+  const toSave = {};
+  for (const key of COLOR_KEYS) {
+    if (workingOverrides[key]) {
+      toSave[key] = workingOverrides[key];
+    }
+  }
+
+  if (Object.keys(toSave).length > 0) {
+    chrome.storage.local.set({ themeOverrides: toSave });
+  } else {
+    chrome.storage.local.remove('themeOverrides');
+  }
+}
+
+document.getElementById('colorDone').addEventListener('click', closeColorPanel);
+colorPanel.addEventListener('click', (e) => {
+  if (e.target === colorPanel) closeColorPanel();
+});
+
+// Swatch changed -> update hex input + live preview
+colorSwatches.forEach(swatch => {
+  swatch.addEventListener('input', (e) => {
+    const key = e.target.dataset.colorKey;
+    const hex = e.target.value;
+    const hexInput = colorPanel.querySelector(`.color-hex[data-color-key="${key}"]`);
+    hexInput.value = hex;
+    previewColor(key, hex);
+  });
+});
+
+// Hex input changed -> update swatch + live preview
+colorHexInputs.forEach(input => {
+  input.addEventListener('input', (e) => {
+    let val = e.target.value.trim();
+    // Auto-prepend # if the user forgot it
+    if (val.length >= 6 && !val.startsWith('#')) {
+      val = '#' + val;
+      e.target.value = val;
+    }
+    if (!isValidHex(val)) return;
+    const key = e.target.dataset.colorKey;
+    const swatch = colorPanel.querySelector(`.color-swatch[data-color-key="${key}"]`);
+    swatch.value = val;
+    previewColor(key, val);
+  });
+});
+
+// Reset to defaults
+document.getElementById('colorReset').addEventListener('click', () => {
+  workingOverrides = {};
+  // Clear all inline overrides
+  COLOR_KEYS.forEach(k => clearColorChannels(k));
+  clearDerivedColors();
+  // Reset panel inputs
+  colorSwatches.forEach(swatch => {
+    const hexInput = colorPanel.querySelector(`.color-hex[data-color-key="${swatch.dataset.colorKey}"]`);
+    swatch.value = hexInput.placeholder;
+    hexInput.value = '';
+  });
+  chrome.storage.local.remove('themeOverrides');
+});
 
 // Initialize
 renderDashboard();
